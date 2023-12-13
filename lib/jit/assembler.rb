@@ -766,6 +766,7 @@ module JIT
     end
 
     # RET: Return
+    # @return [void]
     def ret
       # RET
       # Near return: A return to a procedure within the current code segment
@@ -978,6 +979,11 @@ module JIT
     end
 
     # id: 4 bytes
+    # @param [Integer] imm
+    # @return [Array<Integer>]
+    # @example
+    #   assembler = JIT::Assembler.new
+    #   assembler.imm32(4) #=> [4, 0, 0, 0]
     def imm32(imm)
       unless imm32?(imm)
         raise ArgumentError, "unexpected imm32: #{imm}"
@@ -1042,18 +1048,38 @@ module JIT
   end
 
   module OperandMatcher
+    # @param [Integer] imm
+    # @return [Boolean]
+    # @example
+    #   assembler = JIT::Assembler.new
+    #   assembler.imm8?(4) #=> true
     def imm8?(imm)
       (-0x80..0x7f).include?(imm)
     end
 
+    # @param [Integer] imm
+    # @return [Boolean]
+    # @example
+    #   assembler = JIT::Assembler.new
+    #   assembler.imm32?(4) #=> true
     def imm32?(imm)
       (-0x8000_0000..0x7fff_ffff).include?(imm) # TODO: consider uimm
     end
 
+    # @param [Integer] imm
+    # @return [Boolean]
+    # @example
+    #   assembler = JIT::Assembler.new
+    #   assembler.imm64?(4) #=> true
     def imm64?(imm)
       (-0x8000_0000_0000_0000..0xffff_ffff_ffff_ffff).include?(imm)
     end
 
+    # @param [Symbol] reg
+    # @return [Boolean]
+    # @example
+    #   assembler = JIT::Assembler.new
+    #   assembler.r32?(:r8) #=> false
     def r32?(reg)
       if extended_reg?(reg)
         reg.end_with?('d')
@@ -1062,6 +1088,11 @@ module JIT
       end
     end
 
+    # @param [Symbol] reg
+    # @return [Boolean]
+    # @example
+    #   assembler = JIT::Assembler.new
+    #   assembler.r64?(:r8) #=> true
     def r64?(reg)
       if extended_reg?(reg)
         reg.match?(/\Ar\d+\z/)
@@ -1070,6 +1101,11 @@ module JIT
       end
     end
 
+    # @param [Symbol] reg
+    # @return [Boolean]
+    # @example
+    #   assembler = JIT::Assembler.new
+    #   assembler.extended_reg?(:r8) #=> true
     def extended_reg?(reg)
       reg_code_extended(reg).last
     end
