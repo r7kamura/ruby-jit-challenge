@@ -5,6 +5,23 @@ module JIT
     JIT_BUFFER_SIZE = 1024 * 1024
     private_constant :JIT_BUFFER_SIZE
 
+    # @note We use these registers as a stack.
+    STACK = %i[
+      r8
+      r9
+      r10
+      r11
+    ]
+    private_constant :STACK
+
+    # @note "EC" means "execution context".
+    EC = :rdi
+    private_constant :EC
+
+    # @note "CFP" means "control frame pointer".
+    CFP = :rsi
+    private_constant :CFP
+
     def initialize
       @jit_buffer_address = ::RubyVM::RJIT::C.mmap(JIT_BUFFER_SIZE)
       @jit_buffer_offset = 0
@@ -15,10 +32,22 @@ module JIT
     def compile(instruction_sequence)
       assembler = Assembler.new
 
+      stack_size = 0
       iterate_instructions(instruction_sequence) do |instruction|
         case instruction.name
+        in :leave
+          assembler.add(CFP, ::RubyVM::RJIT::C.rb_control_frame_t.size)
+          assembler.mov([EC, ::RubyVM::RJIT::C.rb_execution_context_t.offsetof(:cfp)], CFP)
+          assembler.mov(:rax, STACK[stack_size - 1])
+          assembler.ret
         in :nop
           # none
+        in :putnil
+          assembler.mov(
+            STACK[stack_size],
+            ::RubyVM::RJIT::C.to_value(nil)
+          )
+          stack_size += 1
         end
       end
 
