@@ -96,6 +96,12 @@ module JIT
             ::RubyVM::RJIT::C.to_value(1)
           )
           stack_size += 1
+        in :putself
+          assembler.mov(
+            STACK[stack_size],
+            [CFP, ::RubyVM::RJIT::C.rb_control_frame_t.offsetof(:self)]
+          )
+          stack_size += 1
         end
       end
 
