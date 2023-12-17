@@ -1,0 +1,11 @@
+services:
+  ruby:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: bash
+    stdin_open: true
+    tty: true
+    volumes:
+      - .:/app
+
