@@ -33,7 +33,7 @@ module JIT
       assembler = Assembler.new
 
       stack_size = 0
-      iterate_instructions(instruction_sequence) do |instruction|
+      iterate_instructions(instruction_sequence) do |instruction, index|
         case instruction.name
         in :leave
           assembler.add(CFP, ::RubyVM::RJIT::C.rb_control_frame_t.size)
@@ -42,10 +42,34 @@ module JIT
           assembler.ret
         in :nop
           # none
+        in :opt_plus
+          rhs = STACK[stack_size - 1]
+          lhs = STACK[stack_size - 2]
+          stack_size -= 1
+          assembler.add(lhs, rhs)
+          assembler.sub(lhs, 1)
         in :putnil
           assembler.mov(
             STACK[stack_size],
             ::RubyVM::RJIT::C.to_value(nil)
+          )
+          stack_size += 1
+        in :putobject
+          assembler.mov(
+            STACK[stack_size],
+            instruction_sequence.body.iseq_encoded[index + 1]
+          )
+          stack_size += 1
+        in :putobject_INT2FIX_0_
+          assembler.mov(
+            STACK[stack_size],
+            ::RubyVM::RJIT::C.to_value(0)
+          )
+          stack_size += 1
+        in :putobject_INT2FIX_1_
+          assembler.mov(
+            STACK[stack_size],
+            ::RubyVM::RJIT::C.to_value(1)
           )
           stack_size += 1
         end
@@ -62,7 +86,7 @@ module JIT
     private
 
     # @param [RubyVM::InstructionSequence] instruction_sequence
-    # @yield [RubyVM::RJIT::Instruction]
+    # @yield [RubyVM::RJIT::Instruction, Integer]
     # @return [void]
     def iterate_instructions(instruction_sequence)
       index = 0
@@ -72,7 +96,7 @@ module JIT
             instruction_sequence.body.iseq_encoded[index]
           )
         )
-        yield instruction
+        yield instruction, index
         index += instruction.len
       end
     end
