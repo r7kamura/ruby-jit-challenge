@@ -35,6 +35,16 @@ module JIT
       stack_size = 0
       iterate_instructions(instruction_sequence) do |instruction, index|
         case instruction.name
+        in :getlocal_WC_0
+          assembler.mov(
+            :rax,
+            [CFP, ::RubyVM::RJIT::C.rb_control_frame_t.offsetof(:ep)]
+          )
+          assembler.mov(
+            STACK[stack_size],
+            [:rax, -instruction_sequence.body.iseq_encoded[index + 1] * ::RubyVM::RJIT::C.VALUE.size]
+          )
+          stack_size += 1
         in :leave
           assembler.add(CFP, ::RubyVM::RJIT::C.rb_control_frame_t.size)
           assembler.mov([EC, ::RubyVM::RJIT::C.rb_execution_context_t.offsetof(:cfp)], CFP)
@@ -42,6 +52,20 @@ module JIT
           assembler.ret
         in :nop
           # none
+        in :opt_lt
+          rhs = STACK[stack_size - 1]
+          lhs = STACK[stack_size - 2]
+          stack_size -= 1
+          assembler.cmp(lhs, rhs)
+          assembler.mov(lhs, ::RubyVM::RJIT::C.to_value(false))
+          assembler.mov(:rax, ::RubyVM::RJIT::C.to_value(true))
+          assembler.cmovl(lhs, :rax)
+        in :opt_minus
+          rhs = STACK[stack_size - 1]
+          lhs = STACK[stack_size - 2]
+          stack_size -= 1
+          assembler.sub(lhs, rhs)
+          assembler.add(lhs, 1)
         in :opt_plus
           rhs = STACK[stack_size - 1]
           lhs = STACK[stack_size - 2]
