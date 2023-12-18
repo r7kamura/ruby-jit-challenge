@@ -22,6 +22,9 @@ module JIT
     CFP = :rsi
     private_constant :CFP
 
+    NULL_IN_C = 0
+    private_constant :NULL_IN_C
+
     def initialize
       @jit_buffer_address = ::RubyVM::RJIT::C.mmap(JIT_BUFFER_SIZE)
       @jit_buffer_offset = 0
@@ -72,6 +75,74 @@ module JIT
           stack_size -= 1
           assembler.add(lhs, rhs)
           assembler.sub(lhs, 1)
+        in :opt_send_without_block
+          call_data = ::RubyVM::RJIT::C.rb_call_data.new(
+            instruction_sequence.body.iseq_encoded[index + 1]
+          )
+          callee_instruction_sequence = call_data.cc.cme_.def.body.iseq.iseqptr
+
+          # Compile callee if it is not done yet.
+          if callee_instruction_sequence.body.jit_func == NULL_IN_C
+            compile(callee_instruction_sequence)
+          end
+
+          arguments_count = ::RubyVM::RJIT::C.vm_ci_argc(call_data.ci)
+
+          # Push argument1, argument2, ..., argumentN to cfp->sp.
+          assembler.mov(
+            :rax,
+            [CFP, ::RubyVM::RJIT::C.rb_control_frame_t.offsetof(:sp)]
+          )
+          arguments_count.times do |i|
+            assembler.mov(
+              [:rax, ::RubyVM::RJIT::C.VALUE.size * i],
+              STACK[stack_size - arguments_count + i]
+            )
+          end
+
+          # Push a new control frame to call stack, and then set cfp->sp, cfp->ep, and cfp->self.
+          assembler.sub(
+            CFP,
+            ::RubyVM::RJIT::C.rb_control_frame_t.size
+          )
+          assembler.add(
+            :rax,
+            ::RubyVM::RJIT::C.VALUE.size * (arguments_count + 3) # arguments + cme + block_handler + frame type (callee EP)
+          )
+          assembler.mov(
+            [CFP, ::RubyVM::RJIT::C.rb_control_frame_t.offsetof(:sp)],
+            :rax
+          )
+          assembler.sub(
+            :rax,
+            ::RubyVM::RJIT::C.VALUE.size
+          )
+          assembler.mov(
+            [CFP, ::RubyVM::RJIT::C.rb_control_frame_t.offsetof(:ep)],
+            :rax
+          )
+          assembler.sub(
+            :rax,
+            STACK[stack_size - arguments_count - 1]
+          )
+          assembler.mov(
+            [CFP, ::RubyVM::RJIT::C.rb_control_frame_t.offsetof(:self)],
+            :rax
+          )
+
+          # Call the callee.
+          STACK.each do |register|
+            assembler.push(register)
+          end
+          assembler.call(callee_instruction_sequence.body.jit_func)
+          STACK.reverse_each do |register|
+            assembler.pop(register)
+          end
+          stack_size -= arguments_count
+          assembler.mov(
+            STACK[stack_size - 1],
+            :rax
+          )
         in :putnil
           assembler.mov(
             STACK[stack_size],
